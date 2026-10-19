@@ -7,15 +7,17 @@ import tempfile
 import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, get_args
+from typing import Annotated, Any, get_args
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile
 
 from app.assistant import purge as assistant_purge
+from app.assistant.principal import principal_of
+from app.assistant.sessions import PrivateSessions
 from app.core.billing_policy import SOURCE_INVOKE
 from app.core.config import get_settings
 from app.core.db import get_db
@@ -49,6 +51,7 @@ from app.services import (
     memory_ownership,
     oauth_sessions,
     registry_console,
+    runtime_logs,
     snapshots,
 )
 from app.services import inbound_auth as inbound_auth_service
@@ -559,6 +562,39 @@ def get_agent_identity(
         raise NotFoundError("agent.not_found", "agent not found")
     return agent_identity.agent_identity(
         control_client(ws.context), agent, ws.context.resources or {}
+    )
+
+
+@router.get("/agents/{agent_id}/runtime-logs")
+def get_agent_runtime_logs(
+    agent_id: str,
+    request: Request,
+    range: Annotated[str, Query(pattern="^(1h|6h|24h|7d)$")] = "1h",
+    session_id: Annotated[
+        str | None, Query(pattern=r"^[A-Za-z0-9_\-#:.@]{8,256}$")
+    ] = None,
+    keyword: Annotated[str | None, Query(max_length=128)] = None,
+    next_token: Annotated[str | None, Query(max_length=8192)] = None,
+    limit: Annotated[int, Query(ge=1, le=runtime_logs.MAX_LIMIT)] = 100,
+    include_otel: bool = False,
+    db: Session = Depends(get_db),
+    ws: WorkspaceScope = Depends(require_workspace),
+    viewer: Viewer = Depends(require_viewer),
+) -> dict[str, Any]:
+    """Read-only stdout/stderr of the agent's Runtime (FilterLogEvents on the log
+    group derived from the row, oldest first). Another principal's private
+    session answers 404 like a missing one, and its events never appear in an
+    unfiltered page."""
+    agent = _agent_in(db, ws, agent_id, viewer)
+    if agent is None:
+        raise NotFoundError("agent.not_found", "agent not found")
+    private = PrivateSessions(db, ws.id, principal_of(require_identity(request)))
+    if session_id:
+        private.require_visible(session_id)
+    return runtime_logs.agent_runtime_logs(
+        agent, ws.context, range=range, session_id=session_id, keyword=keyword,
+        include_otel=include_otel, next_token=next_token, limit=limit,
+        visible=private.visible,
     )
 
 

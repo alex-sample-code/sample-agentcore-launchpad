@@ -76,3 +76,10 @@
 /* Snapshots card (SnapshotsCard.tsx): pick column. The grouped field-level diff
    (DiffBody, also on the evaluation compare page) is styled in v2.css. */
 .v2 .v2-snap-pick { accent-color: var(--v2-primary); width: 14px; height: 14px; cursor: pointer; }
+
+/* agent detail · runtime logs */
+.v2 .v2-rtlogs-session { width: 300px; }
+.v2 .v2-rtlogs-keyword { width: 200px; }
+.v2 .v2-rtlogs { max-height: 520px; white-space: pre-wrap; }
+.v2 .v2-rtlogs-line { line-height: 1.5; }
+.v2 .v2-rtlogs-ts, .v2 .v2-rtlogs-stream { color: var(--v2-ink-3); }

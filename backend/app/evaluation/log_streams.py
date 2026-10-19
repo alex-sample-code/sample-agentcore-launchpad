@@ -226,6 +226,99 @@ def list_streams(
     return {"log_group": log_group, "streams": rows, "truncated": truncated}
 
 
+# ─── raw runtime events (agent detail · 运行日志) ────────────────────────────
+MAX_EVENT_PAGES = 10
+MAX_NAMED_STREAMS = 100  # FilterLogEvents' logStreamNames cap
+
+
+def session_streams(streams: list[dict]) -> dict[str, list[str]]:
+    """Session id → names of the streams named after it (one per UTC day)."""
+    out: dict[str, list[str]] = {}
+    for stream in streams:
+        name = stream["logStreamName"]
+        sid = session_of_stream(name)
+        if sid:
+            out.setdefault(sid, []).append(name)
+    return out
+
+
+def recent_sessions(logs: Any, log_group: str, since_ms: int) -> list[str]:
+    """Sessions owning a stream with an event since ``since_ms``, newest first."""
+    streams, _ = _recent_streams(logs, log_group, since_ms)
+    return list(session_streams(streams))
+
+
+def runtime_events(
+    logs: Any,
+    log_group: str,
+    *,
+    since_ms: int,
+    until_ms: int,
+    limit: int,
+    session_id: str | None = None,
+    keyword: str | None = None,
+    include_otel: bool = False,
+    token: str | None = None,
+    visible: Any = None,
+) -> dict[str, Any]:
+    """One page of a runtime log group's events, oldest first (FilterLogEvents'
+    order). ``session_id`` reads the streams named after the session; a runtime
+    that names none (Harness) falls back to events containing the id
+    (``session_match="content"``). ``otel-rt-logs`` events are dropped unless
+    ``include_otel``, as are events of a session ``visible`` refuses. Raises the
+    ``ClientError`` of a missing group / denied read for the caller to map."""
+    session_match = None
+    names: list[str] | None = None
+    terms = [keyword.strip()] if keyword and keyword.strip() else []
+    if session_id:
+        streams, _ = _recent_streams(logs, log_group, since_ms)
+        owned = session_streams(streams).get(session_id, [])
+        if owned:
+            session_match = "stream"
+            names = owned[:MAX_NAMED_STREAMS - 1]
+            if include_otel and any(s["logStreamName"] == OTEL_STREAM for s in streams):
+                names.append(OTEL_STREAM)  # every session's: narrowed per event below
+        else:
+            session_match = "content"
+            terms.append(session_id)
+    events: list[dict[str, Any]] = []
+    for _ in range(MAX_EVENT_PAGES):
+        kwargs: dict[str, Any] = {
+            "logGroupName": log_group,
+            "startTime": since_ms,
+            "endTime": until_ms,
+            "limit": limit - len(events),
+        }
+        if names:
+            kwargs["logStreamNames"] = names
+        if terms:
+            kwargs["filterPattern"] = " ".join(_term(t) for t in terms)
+        if token:
+            kwargs["nextToken"] = token
+        page = logs.filter_log_events(**kwargs)
+        for event in page.get("events", []):
+            stream = event.get("logStreamName") or ""
+            message = event.get("message") or ""
+            otel = stream == OTEL_STREAM
+            if otel and not include_otel:
+                continue
+            sid = session_of_stream(stream) or (_event_session(message) if otel else None)
+            if visible is not None and sid and not visible(sid):
+                continue
+            if session_match == "stream" and otel and sid != session_id:
+                continue
+            events.append({
+                "timestamp": _iso(event.get("timestamp")),
+                "stream": stream,
+                "session_id": sid,
+                "message": message,
+            })
+        token = page.get("nextToken")
+        if not token or len(events) >= limit:
+            break
+    return {"events": events, "next_token": token, "session_match": session_match}
+
+
 # ─── CloudWatch-only sources (no platform agent) ────────────────────────────
 MAX_LOG_GROUPS = 150
 _LOG_GROUP_PAGE = 50

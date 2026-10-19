@@ -502,6 +502,43 @@ export interface AgentVersionsInfo {
   canary_endpoints: string[];
 }
 
+/** GET /api/agents/{id}/runtime-logs — one page of the Runtime's stdout/stderr. */
+export type RuntimeLogsRange = "1h" | "6h" | "24h" | "7d";
+
+export interface RuntimeLogsParams {
+  range?: RuntimeLogsRange;
+  session_id?: string;
+  keyword?: string;
+  include_otel?: boolean;
+  next_token?: string;
+  limit?: number;
+}
+
+export interface RuntimeLogEvent {
+  timestamp: string | null;
+  stream: string;
+  session_id: string | null;
+  message: string;
+}
+
+export interface RuntimeLogsPage {
+  agent_id: string;
+  range: RuntimeLogsRange;
+  session_id: string | null;
+  keyword: string | null;
+  include_otel: boolean;
+  log_group: string | null;
+  cloudwatch_url: string | null;
+  /** oldest first */
+  events: RuntimeLogEvent[];
+  next_token: string | null;
+  /** stream = the session's own streams; content = events naming it (Harness) */
+  session_match: "stream" | "content" | null;
+  /** sessions owning a stream in the window (first unfiltered page only) */
+  sessions: string[];
+  unavailable_reason: "no_runtime" | "log_group_not_found" | "access_denied" | null;
+}
+
 /** deployed = its publish succeeded (it has an AWS version); deploying / failed = its
  *  deployment is still running / failed; not_deployed = neither (e.g. a job lost
  *  before it ran). Only a deployed snapshot is a rollback target. */
@@ -6081,6 +6118,9 @@ export const api = {
   getAgent: (id: string, workspaceId?: string | null) =>
     request<AgentInfo>(`/api/agents/${id}`, { headers: pinnedWorkspace(workspaceId) }),
   agentVersions: (id: string) => request<AgentVersionsInfo>(`/api/agents/${id}/versions`),
+  /** One page of the agent's Runtime stdout/stderr; the log group is server-derived. */
+  agentRuntimeLogs: (id: string, query: string) =>
+    request<RuntimeLogsPage>(`/api/agents/${encodeURIComponent(id)}/runtime-logs${query}`),
   /** The agent's spec snapshots (one per publish), newest first, without specs. */
   agentSnapshots: (id: string) =>
     request<{ snapshots: SpecSnapshotInfo[] }>(`/api/agents/${encodeURIComponent(id)}/snapshots`),

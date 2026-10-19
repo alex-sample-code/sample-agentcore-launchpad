@@ -216,21 +216,29 @@ def _harness_telemetry(
     group carries the BACKING runtime's own id (≠ harnessId) — discover it by
     prefix; a re-created harness leaves stale groups behind, so newest wins."""
     base = agent.resource_id.rsplit("-", 1)[0]
-    prefix = f"/aws/bedrock-agentcore/runtimes/harness_{base}-"
-    logs = logs_client or workspace.client("logs")
-    groups = [
-        g for g in logs.describe_log_groups(logGroupNamePrefix=prefix).get("logGroups", [])
-        if g["logGroupName"].endswith("-DEFAULT")
-    ]
-    if not groups:
+    group = harness_log_group(agent.resource_id, logs_client or workspace.client("logs"))
+    if group is None:
         raise AppError(
             "eval.harness_no_telemetry",
             "this harness has no telemetry log group yet — run at least one "
             "chat/invoke session first, then start the evaluation",
             status_code=400,
         )
-    newest = max(groups, key=lambda g: g.get("creationTime", 0))
-    return f"harness_{base}.DEFAULT", newest["logGroupName"]
+    return f"harness_{base}.DEFAULT", group
+
+
+def harness_log_group(harness_id: str, logs: Any) -> str | None:
+    """The DEFAULT-endpoint log group of a harness's backing runtime (newest of
+    any stale re-creations), or None before its first session."""
+    base = harness_id.rsplit("-", 1)[0]
+    prefix = f"/aws/bedrock-agentcore/runtimes/harness_{base}-"
+    groups = [
+        g for g in logs.describe_log_groups(logGroupNamePrefix=prefix).get("logGroups", [])
+        if g["logGroupName"].endswith("-DEFAULT")
+    ]
+    if not groups:
+        return None
+    return max(groups, key=lambda g: g.get("creationTime", 0))["logGroupName"]
 
 
 def resolve_telemetry(
