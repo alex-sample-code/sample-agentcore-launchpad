@@ -278,3 +278,24 @@ def test_private_sessions_are_404_and_filtered_out(client, logs, monkeypatch):
     body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
     assert [e["message"] for e in body["events"]] == ["mine"]
     assert body["sessions"] == [SID]
+
+
+def test_harness_private_sessions_are_filtered_by_app_log_session_id(client, logs, monkeypatch):
+    """A Harness names no stream after a session: the session is only in the JSON
+    app-log line's ``sessionId``, so another principal's lines must still drop."""
+    monkeypatch.setattr(agents_router, "PrivateSessions", _Private)
+    backing = "/aws/bedrock-agentcore/runtimes/harness_hr_harness-Zz9-DEFAULT"
+    stream = "2026/10/19/[runtime-logs]cccc"
+    logs(
+        groups=[{"logGroupName": backing, "creationTime": 2}],
+        streams=[_stream(stream)],
+        pages=[{"events": [
+            _event(stream, json.dumps({"message": "mine", "sessionId": SID})),
+            _event(stream, json.dumps({"message": "theirs", "sessionId": OTHER})),
+            _event(stream, "plain stdout line"),
+        ]}],
+    )
+    agent_id = _seed(method="harness", resource_id="hr_harness-XyZ987")
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
+    assert [e["session_id"] for e in body["events"]] == [SID, None]
+    assert all("theirs" not in e["message"] for e in body["events"])

@@ -74,6 +74,19 @@ def _event_session(message: str) -> str | None:
     return sid if isinstance(sid, str) and sid else None
 
 
+def _app_log_session(message: str) -> str | None:
+    """``sessionId`` of a bedrock_agentcore app-log line (JSON). A Harness names no
+    stream after a session, so this is the only place its session shows up."""
+    if not message.lstrip().startswith("{"):
+        return None
+    try:
+        record = json.loads(message)
+    except ValueError:
+        return None
+    sid = record.get("sessionId") if isinstance(record, dict) else None
+    return sid if isinstance(sid, str) and sid else None
+
+
 def _recent_streams(logs: Any, log_group: str, since_ms: int) -> tuple[list[dict], bool]:
     """Streams with an event since ``since_ms``, newest first (capped)."""
     streams: list[dict] = []
@@ -302,7 +315,9 @@ def runtime_events(
             otel = stream == OTEL_STREAM
             if otel and not include_otel:
                 continue
-            sid = session_of_stream(stream) or (_event_session(message) if otel else None)
+            sid = session_of_stream(stream) or (
+                _event_session(message) if otel else _app_log_session(message)
+            )
             if visible is not None and sid and not visible(sid):
                 continue
             if session_match == "stream" and otel and sid != session_id:
