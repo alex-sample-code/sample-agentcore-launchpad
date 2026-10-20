@@ -132,6 +132,9 @@ export function RuntimeLogsCard({ agentId, hosted }: { agentId: string; hosted: 
           {reason && reason !== "noRuntime" && <Alert tone="warn">{t(`v2.agents.runtimeLogs.${reason}`)}</Alert>}
           {reason === "noRuntime" && <Alert>{t("v2.agents.runtimeLogs.noRuntime")}</Alert>}
           {page?.session_match === "content" && <Alert>{t("v2.agents.runtimeLogs.contentMatch")}</Alert>}
+          {!!page?.hidden_unattributed && (
+            <Alert>{t("v2.agents.runtimeLogs.hiddenUnattributed", { count: page.hidden_unattributed })}</Alert>
+          )}
           {loading && !events.length ? (
             <Spin />
           ) : page && !reason ? (

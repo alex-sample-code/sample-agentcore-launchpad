@@ -63,6 +63,17 @@ def _snippet(message: str, keyword: str) -> str:
     return ("…" if start else "") + text.strip()
 
 
+_PLACEHOLDER_SESSIONS = {"", "-", "null", "none"}
+
+
+def _real_session(value: Any) -> str | None:
+    """A session id an event carries, or None for a missing one or a placeholder
+    (``"-"``, ``"null"``, blank) a logger writes when it has no session."""
+    if not isinstance(value, str) or value.strip().lower() in _PLACEHOLDER_SESSIONS:
+        return None
+    return value
+
+
 def _event_session(message: str) -> str | None:
     """``session.id`` of an OTel content-log event (``otel-rt-logs``), if any."""
     try:
@@ -70,8 +81,7 @@ def _event_session(message: str) -> str | None:
     except ValueError:
         return None
     attrs = record.get("attributes") if isinstance(record, dict) else None
-    sid = attrs.get("session.id") if isinstance(attrs, dict) else None
-    return sid if isinstance(sid, str) and sid else None
+    return _real_session(attrs.get("session.id") if isinstance(attrs, dict) else None)
 
 
 def _app_log_session(message: str) -> str | None:
@@ -83,8 +93,7 @@ def _app_log_session(message: str) -> str | None:
         record = json.loads(message)
     except ValueError:
         return None
-    sid = record.get("sessionId") if isinstance(record, dict) else None
-    return sid if isinstance(sid, str) and sid else None
+    return _real_session(record.get("sessionId") if isinstance(record, dict) else None)
 
 
 def _recent_streams(logs: Any, log_group: str, since_ms: int) -> tuple[list[dict], bool]:
@@ -278,8 +287,12 @@ def runtime_events(
     order). ``session_id`` reads the streams named after the session; a runtime
     that names none (Harness) falls back to events containing the id
     (``session_match="content"``). ``otel-rt-logs`` events are dropped unless
-    ``include_otel``, as are events of a session ``visible`` refuses. Raises the
-    ``ClientError`` of a missing group / denied read for the caller to map."""
+    ``include_otel``, as are events of a session ``visible`` refuses. Under
+    ``visible``, an event of a stream named after no session (a Harness's, or
+    ``otel-rt-logs``) whose own content names no session drops too — it cannot be
+    shown to belong to a session the caller may read — and is counted in
+    ``hidden_unattributed``. Raises the ``ClientError`` of a missing group /
+    denied read for the caller to map."""
     session_match = None
     names: list[str] | None = None
     terms = [keyword.strip()] if keyword and keyword.strip() else []
@@ -295,6 +308,7 @@ def runtime_events(
             session_match = "content"
             terms.append(session_id)
     events: list[dict[str, Any]] = []
+    hidden_unattributed = 0
     for _ in range(MAX_EVENT_PAGES):
         kwargs: dict[str, Any] = {
             "logGroupName": log_group,
@@ -318,7 +332,10 @@ def runtime_events(
             sid = session_of_stream(stream) or (
                 _event_session(message) if otel else _app_log_session(message)
             )
-            if visible is not None and sid and not visible(sid):
+            if visible is not None and not sid:
+                hidden_unattributed += 1
+                continue
+            if visible is not None and not visible(sid):
                 continue
             if session_match == "stream" and otel and sid != session_id:
                 continue
@@ -331,7 +348,10 @@ def runtime_events(
         token = page.get("nextToken")
         if not token or len(events) >= limit:
             break
-    return {"events": events, "next_token": token, "session_match": session_match}
+    return {
+        "events": events, "next_token": token, "session_match": session_match,
+        "hidden_unattributed": hidden_unattributed,
+    }
 
 
 # ─── CloudWatch-only sources (no platform agent) ────────────────────────────

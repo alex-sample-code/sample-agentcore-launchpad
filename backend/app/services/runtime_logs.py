@@ -102,6 +102,7 @@ def agent_runtime_logs(
         "next_token": None,
         "session_match": None,
         "sessions": [],
+        "hidden_unattributed": 0,
         "unavailable_reason": None,
     }
     if next_token:
@@ -140,6 +141,7 @@ def agent_runtime_logs(
         **out,
         "events": page["events"],
         "session_match": page["session_match"],
+        "hidden_unattributed": page["hidden_unattributed"],
         "next_token": _pack(page["next_token"], since_ms, until_ms)
         if page["next_token"] else None,
     }

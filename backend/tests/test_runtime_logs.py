@@ -173,14 +173,15 @@ def test_harness_discovers_its_backing_group_and_matches_sessions_by_content(cli
             {"logGroupName": backing, "creationTime": 2},
         ],
         streams=[_stream("[runtime-logs]1111-2222"), _stream("otel-rt-logs")],
-        pages=[{"events": [_event("[runtime-logs]1111-2222", f"handling {SID}")]}],
+        pages=[{"events": [_event("[runtime-logs]1111-2222",
+                                  json.dumps({"message": f"handling {SID}", "sessionId": SID}))]}],
     )
     agent_id = _seed(method="harness", resource_id="hr_harness-XyZ987")
     body = client.get(f"/api/agents/{agent_id}/runtime-logs",
                       params={"session_id": SID}).json()
     assert body["log_group"] == backing
     assert body["session_match"] == "content"
-    assert body["events"][0]["session_id"] is None
+    assert body["events"][0]["session_id"] == SID
     call = stub.filters()[0]
     assert call["logGroupName"] == backing
     assert call["filterPattern"] == f'"{SID}"' and "logStreamNames" not in call
@@ -297,5 +298,91 @@ def test_harness_private_sessions_are_filtered_by_app_log_session_id(client, log
     )
     agent_id = _seed(method="harness", resource_id="hr_harness-XyZ987")
     body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
-    assert [e["session_id"] for e in body["events"]] == [SID, None]
+    assert [e["session_id"] for e in body["events"]] == [SID]
     assert all("theirs" not in e["message"] for e in body["events"])
+    assert body["hidden_unattributed"] == 1  # the plain line proves no ownership
+
+
+HARNESS_GROUP = "/aws/bedrock-agentcore/runtimes/harness_hr_harness-Zz9-DEFAULT"
+HARNESS_STREAM = "2026/10/19/[runtime-logs]cccc"
+
+
+def _app_log(message: str, sid: Any) -> str:
+    return json.dumps({"message": message, "sessionId": sid})
+
+
+def _harness(logs, pages: list[dict]) -> tuple[StubLogs, str]:
+    stub = logs(
+        groups=[{"logGroupName": HARNESS_GROUP, "creationTime": 2}],
+        streams=[_stream(HARNESS_STREAM)],
+        pages=pages,
+    )
+    return stub, _seed(method="harness", resource_id="hr_harness-XyZ987")
+
+
+def test_harness_unattributable_lines_are_hidden_and_counted(client, logs):
+    """A line of a stream named after no session proves no ownership: print-style
+    stdout of a Harness could be another principal's private session, so it drops."""
+    _, agent_id = _harness(logs, [{"events": [
+        _event(HARNESS_STREAM, _app_log("mine", SID)),
+        _event(HARNESS_STREAM, "plain stdout line"),
+        _event(HARNESS_STREAM, '{"message": "no session field"}'),
+    ]}])
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
+    assert [e["session_id"] for e in body["events"]] == [SID]
+    assert body["hidden_unattributed"] == 2
+
+
+@pytest.mark.parametrize("placeholder", ["-", "", "   ", "null", "None", "NULL", None])
+def test_placeholder_session_ids_are_unattributed(client, logs, placeholder):
+    _, agent_id = _harness(logs, [{"events": [
+        _event(HARNESS_STREAM, _app_log("placeholder", placeholder)),
+        _event(HARNESS_STREAM, _app_log("mine", SID)),
+    ]}])
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
+    assert [e["message"] for e in body["events"]] == [_app_log("mine", SID)]
+    assert body["hidden_unattributed"] == 1
+
+
+def test_harness_session_filter_keeps_only_lines_proven_to_be_that_session(client, logs):
+    _, agent_id = _harness(logs, [{"events": [
+        _event(HARNESS_STREAM, _app_log(f"handling {SID}", SID)),
+        _event(HARNESS_STREAM, f"print mentioning {SID}"),
+    ]}])
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs",
+                      params={"session_id": SID}).json()
+    assert body["session_match"] == "content"
+    assert [e["session_id"] for e in body["events"]] == [SID]
+    assert body["hidden_unattributed"] == 1
+
+
+def test_session_named_streams_keep_their_plain_lines(client, logs):
+    logs(
+        streams=[_stream(SESSION_STREAM)],
+        pages=[{"events": [_event(SESSION_STREAM, "plain stdout line"),
+                           _event(SESSION_STREAM, _app_log("x", "-"))]}],
+    )
+    agent_id = _seed()
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
+    assert [e["session_id"] for e in body["events"]] == [SID, SID]
+    assert body["hidden_unattributed"] == 0
+
+
+def test_dropped_lines_do_not_stall_paging(client, logs):
+    """A page of only unattributable lines reads on, and the AWS token survives
+    so the next page continues where the scan stopped."""
+    stub, agent_id = _harness(logs, [
+        {"events": [_event(HARNESS_STREAM, "noise")] * 3, "nextToken": "aws-1"},
+        {"events": [_event(HARNESS_STREAM, _app_log("mine", SID))], "nextToken": "aws-2"},
+        {"events": [_event(HARNESS_STREAM, "noise")]},
+    ])
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs", params={"limit": 1}).json()
+    assert [e["session_id"] for e in body["events"]] == [SID]
+    assert body["hidden_unattributed"] == 3
+    assert body["next_token"]
+    assert [f.get("nextToken") for f in stub.filters()] == [None, "aws-1"]
+    again = client.get(f"/api/agents/{agent_id}/runtime-logs",
+                       params={"next_token": body["next_token"]}).json()
+    assert stub.filters()[-1]["nextToken"] == "aws-2"
+    assert again["events"] == [] and again["hidden_unattributed"] == 1
+    assert again["next_token"] is None
