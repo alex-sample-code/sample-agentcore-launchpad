@@ -15,6 +15,7 @@ import pytest
 
 import app.routers.agents as agents_router
 from app.core.db import DEFAULT_WORKSPACE_ID, SessionLocal
+from app.models.assistant import AssistantConversation
 from app.models.ledger import Agent
 from app.services import runtime_logs
 from app.services.workspace import WorkspaceContext
@@ -25,6 +26,8 @@ GROUP = f"/aws/bedrock-agentcore/runtimes/{RUNTIME_ID}-DEFAULT"
 SID = "sess-0123456789abcdef0123456789abcdef"
 OTHER = "sess-ffffffffffffffffffffffffffffffff"
 NOW = 1_800_000_000_000
+# the architect preset: the only agent its assistant conversations' private sessions run on
+PRESET = "aws-agent-solution-architect"
 
 
 def _stream(name: str, last: int = NOW - 1000) -> dict:
@@ -83,11 +86,12 @@ def logs(monkeypatch):
 
 
 def _seed(method: str = "zip_runtime", resource_id: str | None = RUNTIME_ID,
-          status: str = "active", spec: dict | None = None) -> str:
+          status: str = "active", spec: dict | None = None,
+          system_key: str | None = None) -> str:
     db = SessionLocal()
     try:
         row = Agent(workspace_id=DEFAULT_WORKSPACE_ID, name=f"a-{method}", method=method,
-                    status=status,
+                    status=status, system_key=system_key,
                     resource_id=resource_id, spec=spec or {})
         db.add(row)
         db.commit()
@@ -296,7 +300,7 @@ def test_harness_private_sessions_are_filtered_by_app_log_session_id(client, log
             _event(stream, "plain stdout line"),
         ]}],
     )
-    agent_id = _seed(method="harness", resource_id="hr_harness-XyZ987")
+    agent_id = _seed(method="harness", resource_id="hr_harness-XyZ987", system_key=PRESET)
     body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
     assert [e["session_id"] for e in body["events"]] == [SID]
     assert all("theirs" not in e["message"] for e in body["events"])
@@ -311,18 +315,20 @@ def _app_log(message: str, sid: Any) -> str:
     return json.dumps({"message": message, "sessionId": sid})
 
 
-def _harness(logs, pages: list[dict]) -> tuple[StubLogs, str]:
+def _harness(logs, pages: list[dict], system_key: str | None = PRESET) -> tuple[StubLogs, str]:
+    """A Harness agent; by default the preset, whose unattributed lines hide."""
     stub = logs(
         groups=[{"logGroupName": HARNESS_GROUP, "creationTime": 2}],
         streams=[_stream(HARNESS_STREAM)],
         pages=pages,
     )
-    return stub, _seed(method="harness", resource_id="hr_harness-XyZ987")
+    return stub, _seed(method="harness", resource_id="hr_harness-XyZ987",
+                       system_key=system_key)
 
 
 def test_harness_unattributable_lines_are_hidden_and_counted(client, logs):
     """A line of a stream named after no session proves no ownership: print-style
-    stdout of a Harness could be another principal's private session, so it drops."""
+    stdout of the preset could be another principal's private session, so it drops."""
     _, agent_id = _harness(logs, [{"events": [
         _event(HARNESS_STREAM, _app_log("mine", SID)),
         _event(HARNESS_STREAM, "plain stdout line"),
@@ -386,3 +392,44 @@ def test_dropped_lines_do_not_stall_paging(client, logs):
     assert stub.filters()[-1]["nextToken"] == "aws-2"
     assert again["events"] == [] and again["hidden_unattributed"] == 1
     assert again["next_token"] is None
+
+
+def test_an_agent_without_private_sessions_shows_unattributed_lines(client, logs):
+    """Private sessions run only on the preset: any other Harness's print-style
+    stdout cannot be one, so it shows and nothing is counted as hidden."""
+    _, agent_id = _harness(logs, [{"events": [
+        _event(HARNESS_STREAM, _app_log("mine", SID)),
+        _event(HARNESS_STREAM, "plain stdout line"),
+    ]}], system_key=None)
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
+    assert [e["message"] for e in body["events"]] == [_app_log("mine", SID), "plain stdout line"]
+    assert [e["session_id"] for e in body["events"]] == [SID, None]
+    assert body["hidden_unattributed"] == 0
+
+
+def test_the_preset_a_conversation_was_sent_to_hides_unattributed_lines(client, logs):
+    # a conversation's preset row hides them even if it carries no system_key (any more)
+    _, agent_id = _harness(logs, [{"events": [_event(HARNESS_STREAM, "plain stdout line")]}],
+                           system_key=None)
+    db = SessionLocal()
+    try:
+        db.add(AssistantConversation(workspace_id=DEFAULT_WORKSPACE_ID, owner="alice",
+                                     owner_principal="user:alice", preset_agent_id=agent_id))
+        db.commit()
+    finally:
+        db.close()
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs").json()
+    assert body["events"] == [] and body["hidden_unattributed"] == 1
+
+
+@pytest.mark.parametrize("system_key, expected", [(PRESET, None), (None, 0)])
+def test_a_keyword_withholds_the_hidden_count(client, logs, system_key, expected):
+    """Under a keyword the count of hidden lines would tell which of them contain it
+    (a substring oracle on another principal's output), so the preset withholds it."""
+    _, agent_id = _harness(logs, [{"events": [
+        _event(HARNESS_STREAM, "plain stdout line with secret"),
+    ]}], system_key=system_key)
+    body = client.get(f"/api/agents/{agent_id}/runtime-logs",
+                      params={"keyword": "secret"}).json()
+    assert body["hidden_unattributed"] == expected
+    assert len(body["events"]) == (0 if system_key else 1)

@@ -5524,6 +5524,7 @@
         "noLogGroup": "Runtime 日志组尚不存在——首次调用后才会创建。",
         "accessDenied": "Launchpad 无权读取该日志组（AccessDenied）。请检查工作空间角色的 CloudWatch Logs 权限。",
         "hiddenUnattributed": "已隐藏 {{count}} 行不含会话的日志：无法确认其属于你可查看的会话。",
+        "hiddenUnattributedFiltered": "此 Agent 上不含会话的日志行会被隐藏，因为它们可能属于他人的私有会话；按关键词筛选时不显示隐藏的行数。",
         "contentMatch": "该 Runtime 的日志流不按会话划分（Harness），因此仅显示提及该会话 ID 的日志行。"
       },
       "versionsTitle": "版本与端点",

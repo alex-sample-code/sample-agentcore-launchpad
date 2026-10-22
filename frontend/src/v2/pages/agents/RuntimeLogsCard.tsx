@@ -135,6 +135,7 @@ export function RuntimeLogsCard({ agentId, hosted }: { agentId: string; hosted: 
           {!!page?.hidden_unattributed && (
             <Alert>{t("v2.agents.runtimeLogs.hiddenUnattributed", { count: page.hidden_unattributed })}</Alert>
           )}
+          {page?.hidden_unattributed === null && <Alert>{t("v2.agents.runtimeLogs.hiddenUnattributedFiltered")}</Alert>}
           {loading && !events.length ? (
             <Spin />
           ) : page && !reason ? (

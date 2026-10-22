@@ -577,8 +577,9 @@ export interface RuntimeLogsPage {
   session_match: "stream" | "content" | null;
   /** sessions owning a stream in the window (first unfiltered page only) */
   sessions: string[];
-  /** lines of a stream named after no session that name no visible session themselves */
-  hidden_unattributed: number;
+  /** lines of a stream named after no session that name no visible session themselves
+   *  (only on an agent that can host private sessions; null = withheld under a keyword) */
+  hidden_unattributed: number | null;
   unavailable_reason: "no_runtime" | "log_group_not_found" | "access_denied" | null;
 }
 

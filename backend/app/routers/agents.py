@@ -628,6 +628,7 @@ def get_agent_runtime_logs(
         agent, ws.context, range=range, session_id=session_id, keyword=keyword,
         include_otel=include_otel, next_token=next_token, limit=limit,
         visible=private.visible,
+        hide_unattributed=runtime_logs.may_host_private_sessions(db, agent),
     )
 
 

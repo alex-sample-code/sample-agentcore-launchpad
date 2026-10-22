@@ -282,17 +282,19 @@ def runtime_events(
     include_otel: bool = False,
     token: str | None = None,
     visible: Any = None,
+    hide_unattributed: bool = False,
 ) -> dict[str, Any]:
     """One page of a runtime log group's events, oldest first (FilterLogEvents'
     order). ``session_id`` reads the streams named after the session; a runtime
     that names none (Harness) falls back to events containing the id
     (``session_match="content"``). ``otel-rt-logs`` events are dropped unless
-    ``include_otel``, as are events of a session ``visible`` refuses. Under
-    ``visible``, an event of a stream named after no session (a Harness's, or
-    ``otel-rt-logs``) whose own content names no session drops too — it cannot be
-    shown to belong to a session the caller may read — and is counted in
-    ``hidden_unattributed``. Raises the ``ClientError`` of a missing group /
-    denied read for the caller to map."""
+    ``include_otel``, as are events of a session ``visible`` refuses. With
+    ``hide_unattributed``, an event of a stream named after no session (a
+    Harness's, or ``otel-rt-logs``) whose own content names no session drops too —
+    it cannot be shown to belong to a session the caller may read — and is counted
+    in ``hidden_unattributed``; under a keyword that count is withheld (``None``),
+    since it would tell which hidden lines contain the keyword. Raises the
+    ``ClientError`` of a missing group / denied read for the caller to map."""
     session_match = None
     names: list[str] | None = None
     terms = [keyword.strip()] if keyword and keyword.strip() else []
@@ -332,10 +334,10 @@ def runtime_events(
             sid = session_of_stream(stream) or (
                 _event_session(message) if otel else _app_log_session(message)
             )
-            if visible is not None and not sid:
+            if not sid and hide_unattributed:
                 hidden_unattributed += 1
                 continue
-            if visible is not None and not visible(sid):
+            if sid and visible is not None and not visible(sid):
                 continue
             if session_match == "stream" and otel and sid != session_id:
                 continue
@@ -348,9 +350,10 @@ def runtime_events(
         token = page.get("nextToken")
         if not token or len(events) >= limit:
             break
+    withheld = hide_unattributed and bool(keyword and keyword.strip())
     return {
         "events": events, "next_token": token, "session_match": session_match,
-        "hidden_unattributed": hidden_unattributed,
+        "hidden_unattributed": None if withheld else hidden_unattributed,
     }
 
 

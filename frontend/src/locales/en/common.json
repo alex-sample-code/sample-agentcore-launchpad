@@ -5524,6 +5524,7 @@
         "noLogGroup": "The runtime log group does not exist yet — it appears after the first invocation.",
         "accessDenied": "Launchpad is not allowed to read this log group (AccessDenied). Check the workspace role's CloudWatch Logs permissions.",
         "hiddenUnattributed": "{{count}} lines without a session were hidden: their output cannot be tied to a session you may read.",
+        "hiddenUnattributedFiltered": "Lines without a session are hidden on this agent, since they could belong to someone else's private session. How many is not shown while a keyword is applied.",
         "contentMatch": "This runtime's log streams are not split by session (Harness), so the lines shown are the ones that mention the session ID."
       },
       "versionsTitle": "Versions and endpoints",

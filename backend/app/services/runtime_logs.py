@@ -22,10 +22,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from botocore.exceptions import ClientError
+from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, aws_error_code
 from app.evaluation import log_streams
 from app.evaluation.service import harness_log_group
+from app.models.assistant import AssistantConversation
 from app.models.ledger import Agent
 from app.services.agent_versions import DEFAULT_ENDPOINT, resource_kind
 from app.services.observability import RANGE_HOURS, RUNTIME_LOG_GROUP_PREFIX
@@ -76,6 +78,17 @@ def log_group_of(agent: Agent, logs: Any) -> str | None:
     return None
 
 
+def may_host_private_sessions(db: Session, agent: Agent) -> bool:
+    """Whether another principal's private session can run on the agent: only the
+    preset an assistant conversation was sent to (``preset_agent_id``) carries
+    them, so a line that names no session hides only there."""
+    if agent.system_key:
+        return True
+    return db.query(AssistantConversation.id).filter(
+        AssistantConversation.preset_agent_id == agent.id
+    ).first() is not None
+
+
 def agent_runtime_logs(
     agent: Agent,
     workspace: WorkspaceContext,
@@ -87,6 +100,7 @@ def agent_runtime_logs(
     next_token: str | None = None,
     limit: int = 100,
     visible: Any = None,
+    hide_unattributed: bool = True,
     logs: Any = None,
 ) -> dict[str, Any]:
     logs = logs or workspace.client("logs")
@@ -122,7 +136,7 @@ def agent_runtime_logs(
             logs, log_group,
             since_ms=since_ms, until_ms=until_ms, limit=min(limit, MAX_LIMIT),
             session_id=session_id, keyword=keyword, include_otel=include_otel,
-            token=token, visible=visible,
+            token=token, visible=visible, hide_unattributed=hide_unattributed,
         )
         if not next_token and not session_id:
             # the session picker: sessions that own a stream in the window
