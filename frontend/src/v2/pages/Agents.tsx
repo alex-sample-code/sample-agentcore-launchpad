@@ -22,6 +22,7 @@ import { AgentIdentity } from "./agents/AgentIdentity";
 import { AgentSource } from "./agents/AgentSource";
 import { InboundSwitchCard } from "./agents/InboundAuthFields";
 import { IntegrationCard } from "./agents/IntegrationCard";
+import { RuntimeLogsCard } from "./agents/RuntimeLogsCard";
 import { SnapshotsCard } from "./agents/SnapshotsCard";
 import { TryChat } from "./agents/TryChat";
 import { AgentWizard } from "./agents/AgentWizard";
@@ -705,6 +706,7 @@ function AgentDetail({ id }: { id: string }) {
         />
       )}
       {hasResource && agent.status !== "deploying" && <VersionsCard agentId={agent.id} />}
+      <RuntimeLogsCard agentId={agent.id} hosted={!!agent.arn && agent.status !== "deleted"} />
       {agent.method !== "discovered_runtime" && (
         <SnapshotsCard
           agentId={agent.id}

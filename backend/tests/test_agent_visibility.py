@@ -152,6 +152,7 @@ def test_hidden_agent_answers_each_routes_missing_error(world):
         ("GET", f"/api/agents/{hidden}/conversions"),
         ("GET", f"/api/agents/{hidden}/versions"),
         ("GET", f"/api/agents/{hidden}/identity"),
+        ("GET", f"/api/agents/{hidden}/runtime-logs"),
         ("POST", f"/api/agents/{hidden}/redeploy", spec),
         ("POST", f"/api/agents/{hidden}/inbound-auth", {"inbound_auth": None}),
         ("POST", f"/api/agents/{hidden}/convert"),

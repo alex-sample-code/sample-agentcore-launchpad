@@ -5499,6 +5499,33 @@
         "skipped": "Skipped",
         "failed": "Failed"
       },
+      "runtimeLogs": {
+        "title": "Runtime logs",
+        "sub": "stdout / stderr of the AgentCore Runtime container (CloudWatch Logs)",
+        "openCloudWatch": "Open in CloudWatch",
+        "rangeLabel": "Time range",
+        "range": {
+          "1h": "1 hour",
+          "6h": "6 hours",
+          "24h": "24 hours",
+          "7d": "7 days"
+        },
+        "sessionPlaceholder": "Session ID (optional)",
+        "keywordPlaceholder": "Keyword (case-sensitive)",
+        "includeOtel": "Include OTel stream",
+        "otelHint": "Also show the shared otel-rt-logs stream (structured OpenTelemetry records)",
+        "load": "Load logs",
+        "query": "Query",
+        "more": "Load more",
+        "loading": "Loading…",
+        "empty": "No log events in this time range.",
+        "badSession": "A session ID is 8–256 characters of letters, digits and _ - # : . @",
+        "noRuntime": "This agent is not hosted on AgentCore Runtime (no runtime resource), so it has no runtime logs.",
+        "noLogGroup": "The runtime log group does not exist yet — it appears after the first invocation.",
+        "accessDenied": "Launchpad is not allowed to read this log group (AccessDenied). Check the workspace role's CloudWatch Logs permissions.",
+        "hiddenUnattributed": "{{count}} lines without a session were hidden: their output cannot be tied to a session you may read.",
+        "contentMatch": "This runtime's log streams are not split by session (Harness), so the lines shown are the ones that mention the session ID."
+      },
       "versionsTitle": "Versions and endpoints",
       "versionsSub": "latest on AWS {{latest}} · last deployed {{ledger}}",
       "endpoint": "Endpoint",

@@ -103,3 +103,9 @@
 .v2 .v2-agents-managed-gw { flex-direction: column; align-items: flex-start; gap: 4px; margin-bottom: 10px; }
 .v2 .v2-agents-managed-gw .v2-check.disabled { color: var(--v2-ink); }
 .v2 .v2-agents-managed-gw .v2-muted { font-size: 12.5px; }
+/* agent detail · runtime logs */
+.v2 .v2-rtlogs-session { width: 300px; }
+.v2 .v2-rtlogs-keyword { width: 200px; }
+.v2 .v2-rtlogs { max-height: 520px; white-space: pre-wrap; }
+.v2 .v2-rtlogs-line { line-height: 1.5; }
+.v2 .v2-rtlogs-ts, .v2 .v2-rtlogs-stream { color: var(--v2-ink-3); }

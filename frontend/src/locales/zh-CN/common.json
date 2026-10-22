@@ -5499,6 +5499,33 @@
         "skipped": "已跳过",
         "failed": "失败"
       },
+      "runtimeLogs": {
+        "title": "运行日志",
+        "sub": "AgentCore Runtime 容器的 stdout / stderr（CloudWatch Logs）",
+        "openCloudWatch": "在 CloudWatch 中打开",
+        "rangeLabel": "时间范围",
+        "range": {
+          "1h": "1 小时",
+          "6h": "6 小时",
+          "24h": "24 小时",
+          "7d": "7 天"
+        },
+        "sessionPlaceholder": "会话 ID（可选）",
+        "keywordPlaceholder": "关键词（区分大小写）",
+        "includeOtel": "包含 OTel 流",
+        "otelHint": "同时显示共享的 otel-rt-logs 流（结构化 OpenTelemetry 记录）",
+        "load": "加载日志",
+        "query": "查询",
+        "more": "加载更多",
+        "loading": "加载中…",
+        "empty": "该时间范围内没有日志事件。",
+        "badSession": "会话 ID 为 8–256 个字符，只能包含字母、数字及 _ - # : . @",
+        "noRuntime": "该 Agent 未托管在 AgentCore Runtime 上（没有 Runtime 资源），因此没有运行日志。",
+        "noLogGroup": "Runtime 日志组尚不存在——首次调用后才会创建。",
+        "accessDenied": "Launchpad 无权读取该日志组（AccessDenied）。请检查工作空间角色的 CloudWatch Logs 权限。",
+        "hiddenUnattributed": "已隐藏 {{count}} 行不含会话的日志：无法确认其属于你可查看的会话。",
+        "contentMatch": "该 Runtime 的日志流不按会话划分（Harness），因此仅显示提及该会话 ID 的日志行。"
+      },
       "versionsTitle": "版本与端点",
       "versionsSub": "AWS 最新版本 {{latest}} · 最近部署 {{ledger}}",
       "endpoint": "端点",
