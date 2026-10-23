@@ -465,9 +465,33 @@ any buildspec the upload carries** — the member controls the Dockerfile only,
 never the build recipe.
 
 **v1 scope.** HTTP protocol only (no A2A); no toolkits/skills/knowledge
-bases/tools on the spec (the platform does not generate this code, so it cannot
+bases on the spec (the platform does not generate this code, so it cannot
 wire them — configure capabilities inside your own code); `system_prompt` is
-optional and serves as a description. Config-bundle experiments and canary
+optional and serves as a description.
+
+**Tool declarations.** `spec.tools` on a byoc agent is a list of *declarations*:
+the platform only grants IAM on the per-agent role and injects env — it never
+wires code into the artifact, so your code opens the session / calls the
+gateway itself. Three shapes are accepted (`_byoc_constraints`), anything else
+(e.g. an MCP tool without `auth`) is refused:
+
+| Declaration | IAM granted | Env injected |
+|---|---|---|
+| `{type: "builtin", name: "browser" \| "code-interpreter"}` (no `config`, no `auth`) | `AgentCoreBrowser` / `AgentCoreCodeInterpreter` session actions | — |
+| `{type: "gateway", name, config?: {gateway_id, tools: [...]}}` (no `auth` — the gateway authenticates its own targets) | `AgentCoreWorkloadIdentity` + `IdentityVaultSecrets`; `AgentCoreGatewayInvoke` on `config.gateway_id` when it names one | `LAUNCHPAD_GATEWAY_URL`, `LAUNCHPAD_GATEWAY_PROVIDER` (M2M OAuth provider name), `LAUNCHPAD_GATEWAY_SCOPE`, `LAUNCHPAD_GATEWAY_TOOLS` (comma-separated fnmatch patterns: the ref's `config.tools`, else `<name>___*`) — set only when the workspace has a gateway URL and OAuth provider |
+| `rest` / `mcp` tool carrying `auth` | per-Connection token grants (see [identity.md](identity.md)) | `LAUNCHPAD_OUTBOUND_AUTH` (JSON) |
+
+`LAUNCHPAD_WORKLOAD_NAME` is **not** injected for byoc: the runtime's
+workload identity is auto-created with the runtime, so its name is unknown at
+create, and the byoc deployer (like the other runtime deployers) does not pass
+one on update either. Code that needs a workload token should use the token the
+Runtime hands each invocation (`BedrockAgentCoreContext`) rather than minting
+its own. Both console byoc wizards have an "AgentCore built-in tools"
+card (Browser / Code Interpreter checkboxes → bare `builtin` refs; the form is the
+only source of truth, so unchecking drops the grant on re-publish). There is no
+gateway picker — declare gateway refs through the API (`POST /api/agents`); a
+console re-publish carries the stored gateway refs forward
+(`lib/agent-spec.ts::republishSpec`). Config-bundle experiments and canary
 candidates degrade with `custom-source-unverified`, exactly like other
 custom-source runtimes. Samples: [`samples/byoc/`](../samples/byoc/README.md);
 lab walkthrough: [docs/lab/13-byoc.md](lab/13-byoc.md).
