@@ -414,11 +414,32 @@ CodeBuild 源码包,**覆盖上传中自带的任何 buildspec**——成员只�
 永远不控制构建配方。
 
 **v1 范围。** HTTP 或 MCP 协议(不支持 A2A);spec 上不支持
-toolkits/skills/knowledge_bases/tools(平台不生成这份代码,无法接线——请在你自己的
+toolkits/skills/knowledge_bases(平台不生成这份代码,无法接线——请在你自己的
 代码里配置能力);`system_prompt` 可选,作为描述使用。配置包实验与金丝雀候选按
 `custom-source-unverified` 降级,与其他自带源码的运行时一致。示例见
 [`samples/byoc/`](../samples/byoc/README.md);实验手册见
 [docs/lab/13-byoc.md](lab/13-byoc.md)。
+
+**工具声明。** byoc agent 的 `spec.tools` 只是*声明*:平台只给每 agent 角色授
+IAM、注入 env,从不往制品里接代码——会话/网关调用由你的代码自己完成。接受三种
+形状,其余(如无 `auth` 的 MCP 工具)一律拒绝:
+
+- `{type: "builtin", name: "browser" | "code-interpreter"}`(无 `config`、无
+  `auth`)→ 授 `AgentCoreBrowser` / `AgentCoreCodeInterpreter` 会话动作,不注入 env。
+- `{type: "gateway", name, config?: {gateway_id, tools}}`(不带 `auth`)→ 授
+  `AgentCoreWorkloadIdentity` + `IdentityVaultSecrets`,`config.gateway_id` 存在时再授
+  `AgentCoreGatewayInvoke`;工作区有网关 URL 与 OAuth provider 时注入
+  `LAUNCHPAD_GATEWAY_URL`、`LAUNCHPAD_GATEWAY_PROVIDER`、`LAUNCHPAD_GATEWAY_SCOPE`、
+  `LAUNCHPAD_GATEWAY_TOOLS`(逗号分隔的 fnmatch 模式:`config.tools`,否则 `<name>___*`)。
+- 带 `auth` 的 `rest` / `mcp` 工具 → 按 Connection 授权,注入 `LAUNCHPAD_OUTBOUND_AUTH`。
+
+byoc **不**注入 `LAUNCHPAD_WORKLOAD_NAME`:运行时的 workload identity 随运行时自动
+创建,创建时名称未知,更新时 byoc 部署器(与其他运行时部署器一样)也不传入;需要
+workload token 的代码请使用 Runtime 每次调用传入的令牌(`BedrockAgentCoreContext`)。
+两个控制台的 byoc 向导都有「AgentCore 内置工具」卡片(Browser / Code Interpreter 复选框 →
+不带 config/auth 的 `builtin` 引用;表单是唯一真相源,取消勾选后重新发布即移除授权)。
+没有 gateway 选择器——gateway 引用请通过 API(`POST /api/agents`)声明;控制台重新发布会沿用
+已存的 gateway 引用(`lib/agent-spec.ts::republishSpec`)。
 
 **原生附件(`code_zip`)。** `code_zip` 的入口文件可以和平台生成的代码一样声明附件约定:
 在顶层写 `LAUNCHPAD_ATTACHMENT_CONTRACT = "v1"` 字面量。package 阶段从上传的入口文件
