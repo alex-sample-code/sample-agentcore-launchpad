@@ -413,6 +413,8 @@ td.chipcell{min-width:170px}
 .md .footnotes ol{margin:4px 0}
 .md .footnotes p{margin:2px 0}
 .md [data-footnote-backref]{text-decoration:none;margin-left:4px}
+/* agent-emitted images (e.g. a browser screenshot URL): fit the bubble, keep aspect */
+.md img{display:block;max-width:100%;height:auto;margin:8px 0;border:1px solid var(--line);border-radius:4px}
 /* hljs tokens → launchpad palette (rehype-highlight classes) */
 .md .hljs-comment,.md .hljs-quote{color:var(--ink-3);font-style:italic}
 .md .hljs-keyword,.md .hljs-selector-tag,.md .hljs-literal,.md .hljs-doctag,.md .hljs-meta{color:var(--s5)}
