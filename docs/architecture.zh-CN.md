@@ -414,11 +414,25 @@ CodeBuild 源码包,**覆盖上传中自带的任何 buildspec**——成员只�
 永远不控制构建配方。
 
 **v1 范围。** HTTP 或 MCP 协议(不支持 A2A);spec 上不支持
-toolkits/skills/knowledge_bases/tools(平台不生成这份代码,无法接线——请在你自己的
+toolkits/skills/knowledge_bases(平台不生成这份代码,无法接线——请在你自己的
 代码里配置能力);`system_prompt` 可选,作为描述使用。配置包实验与金丝雀候选按
 `custom-source-unverified` 降级,与其他自带源码的运行时一致。示例见
 [`samples/byoc/`](../samples/byoc/README.md);实验手册见
 [docs/lab/13-byoc.md](lab/13-byoc.md)。
+
+**工具声明。** byoc agent 的 `spec.tools` 只是*声明*:平台只给每 agent 角色授
+IAM、注入 env,从不往制品里接代码——会话由你的代码自己打开。接受两种形状,其余
+(如 gateway 工具、无 `auth` 的 MCP 工具)一律拒绝:
+
+- `{type: "builtin", name: "browser" | "code-interpreter"}`(无 `config`、无
+  `auth`)→ 授 `AgentCoreBrowser` / `AgentCoreCodeInterpreter` 会话动作(`agent_iam.py`,
+  所有方式共用:会话的启动/停止/查询/列举、浏览器流更新与自动化/实时查看流、
+  `InvokeCodeInterpreter`、工具本身的只读 `Get*`/`List*`;不含 `Create*`/`Delete*`),不注入 env。
+- 带 `auth` 的 `rest` / `mcp` 工具 → 按 Connection 授权,注入 `LAUNCHPAD_OUTBOUND_AUTH`。
+
+两个控制台的 byoc 向导都有「AgentCore 内置工具」卡片(Browser / Code Interpreter 复选框 →
+不带 config/auth 的 `builtin` 引用)。编辑时按已存 spec 回填勾选;表单是唯一真相源,勾选后
+重新发布即加上授权,取消勾选即移除(`/redeploy` 会重新下发角色策略)。
 
 **原生附件(`code_zip`)。** `code_zip` 的入口文件可以和平台生成的代码一样声明附件约定:
 在顶层写 `LAUNCHPAD_ATTACHMENT_CONTRACT = "v1"` 字面量。package 阶段从上传的入口文件

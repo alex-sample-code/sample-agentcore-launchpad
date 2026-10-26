@@ -212,7 +212,7 @@ def test_byoc_refuses_a2a_and_attachments():
     with pytest.raises(ValidationError, match="HTTP"):
         AgentSpec(**_byoc_spec(protocol="a2a"))
     for field, value in (
-        ("tools", [{"type": "builtin", "name": "browser"}]),
+        ("tools", [{"type": "mcp", "name": "open-mcp", "config": {"url": "https://x"}}]),
         ("toolkits", ["hr_assistant"]),
         ("skills", ["s3://b/skills/x/"]),
         ("knowledge_bases", [{"kb_id": "KB123"}]),
@@ -1368,3 +1368,68 @@ def test_code_zip_entrypoint_contract_enables_native_attachments(monkeypatch, ma
     ctx.scratch["execution_role_arn"] = "arn:agent-role"
     byoc_dep._stage_deploy(ctx, _get_agent(agent_id))
     assert _get_agent(agent_id).attachment_version == expected
+
+
+def test_byoc_accepts_builtin_tools_as_iam_declarations():
+    from app.services import agent_iam
+    spec = AgentSpec(**_byoc_spec(tools=[{"type": "builtin", "name": "browser"},
+                                         {"type": "builtin", "name": "code-interpreter"}]))
+    assert agent_iam._builtin_names(spec) == {"browser", "code-interpreter"}
+    with pytest.raises(ValidationError, match="not supported"):
+        AgentSpec(**_byoc_spec(tools=[{"type": "builtin", "name": "web-search"}]))
+    with pytest.raises(ValidationError, match="config is not used"):
+        AgentSpec(**_byoc_spec(tools=[{"type": "builtin", "name": "browser",
+                                       "config": {"x": 1}}]))
+
+
+
+def test_byoc_still_refuses_gateway_tools():
+    with pytest.raises(ValidationError, match="not supported by the byoc"):
+        AgentSpec(**_byoc_spec(tools=[{"type": "gateway", "name": "hr_lookup"}]))
+
+
+def _provisioned_actions(monkeypatch, spec_dict: dict) -> dict[str, list[str]]:
+    """Run the byoc provision stage on `spec_dict`; return the per-agent policy by Sid."""
+    iam = StubIam()
+    _client_router(monkeypatch, {"iam": iam})
+    monkeypatch.setattr(
+        byoc_dep, "get_settings", lambda: SimpleNamespace(per_agent_execution_roles=True),
+    )
+    agent_id, dep_id = _mk_agent(AgentSpec(**spec_dict))
+    ctx = _stage_ctx(agent_id, dep_id, ws_ctx(RESOURCES, account_id="123456789012"))
+    byoc_dep._stage_provision(ctx, _get_agent(agent_id))
+    (role,) = iam.roles.values()
+    return {
+        s["Sid"]: s["Action"]
+        for doc in role["policies"].values() for s in doc["Statement"]
+    }
+
+
+def test_edit_checking_browser_redeploys_with_the_grant_and_unchecking_drops_it(
+    client, stub_s3, monkeypatch,
+):
+    monkeypatch.setattr(agents_router, "start_deploy_async", lambda jid: None)
+    res = client.post("/api/agents", json=_byoc_spec())
+    assert res.status_code == 202, res.text
+    agent = res.json()["agent"]
+    assert "AgentCoreBrowser" not in _provisioned_actions(monkeypatch, agent["spec"])
+
+    def redeploy(tools: list[dict]) -> dict:
+        db = SessionLocal()
+        db.get(Agent, agent["id"]).status = "active"  # simulate the finished deploy
+        db.commit()
+        db.close()
+        res = client.post(f"/api/agents/{agent['id']}/redeploy",
+                          json={**agent["spec"], "tools": tools})
+        assert res.status_code == 202, res.text
+        return res.json()["agent"]["spec"]
+
+    checked = redeploy([{"type": "builtin", "name": "browser"}])
+    assert [(t["type"], t["name"]) for t in checked["tools"]] == [("builtin", "browser")]
+    actions = _provisioned_actions(monkeypatch, checked)
+    assert "bedrock-agentcore:ConnectBrowserAutomationStream" in actions["AgentCoreBrowser"]
+    assert "AgentCoreCodeInterpreter" not in actions
+
+    unchecked = redeploy([])
+    assert unchecked["tools"] == []
+    assert "AgentCoreBrowser" not in _provisioned_actions(monkeypatch, unchecked)

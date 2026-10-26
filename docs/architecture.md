@@ -598,9 +598,26 @@ any buildspec the upload carries** — the member controls the Dockerfile only,
 never the build recipe.
 
 **v1 scope.** HTTP or MCP protocol (no A2A); no toolkits/skills/knowledge
-bases/tools on the spec (the platform does not generate this code, so it cannot
+bases on the spec (the platform does not generate this code, so it cannot
 wire them — configure capabilities inside your own code); `system_prompt` is
-optional and serves as a description. Config-bundle experiments and canary
+optional and serves as a description.
+
+**Tool declarations.** `spec.tools` on a byoc agent is a list of *declarations*:
+the platform only grants IAM on the per-agent role and injects env — it never
+wires code into the artifact, so your code opens the session itself. Two shapes
+are accepted (`_byoc_constraints`); anything else (e.g. a gateway tool, or an MCP
+tool without `auth`) is refused:
+
+| Declaration | IAM granted | Env injected |
+|---|---|---|
+| `{type: "builtin", name: "browser" \| "code-interpreter"}` (no `config`, no `auth`) | `AgentCoreBrowser` / `AgentCoreCodeInterpreter` session actions (`agent_iam.py`, shared with every method: start/stop/get/list sessions, browser stream update + automation / live-view streams, `InvokeCodeInterpreter`, read-only `Get*`/`List*` on the tool; no `Create*`/`Delete*`) | — |
+| `rest` / `mcp` tool carrying `auth` | per-Connection token grants (see [identity.md](identity.md)) | `LAUNCHPAD_OUTBOUND_AUTH` (JSON) |
+
+Both console byoc wizards have an "AgentCore built-in tools" card (Browser /
+Code Interpreter checkboxes → bare `builtin` refs). Editing refills the boxes
+from the stored spec and the form is the only source of truth, so checking a
+box adds the grant and unchecking drops it on re-publish (`/redeploy`
+re-provisions the role). Config-bundle experiments and canary
 candidates degrade with `custom-source-unverified`, exactly like other
 custom-source runtimes. Samples: [`samples/byoc/`](../samples/byoc/README.md);
 lab walkthrough: [docs/lab/13-byoc.md](lab/13-byoc.md).

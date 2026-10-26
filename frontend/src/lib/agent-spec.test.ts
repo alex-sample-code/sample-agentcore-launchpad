@@ -375,3 +375,87 @@ describe("managed COA gateway shown in the Gateway picker", () => {
     expect(managedGatewayAttached({ ...emptyAgentForm("harness"), contextLayer: null })).toBe(false);
   });
 });
+
+describe("byoc re-publish", () => {
+  const STORED_BYOC = {
+    name: "byoc-agent",
+    method: "byoc",
+    model_id: "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    byoc: { artifact_kind: "code_zip", upload_id: "u1" },
+    tools: [{ type: "builtin", name: "browser" }, CRM],
+  };
+  const keys = (tools: { type: string; name: string }[] | undefined) =>
+    (tools ?? []).map((tool) => `${tool.type}:${tool.name}`);
+
+  it("re-states the stored builtins via the form (edit prefill → same grant)", () => {
+    const form = formFromStoredSpec("byoc", "byoc-agent", STORED_BYOC).form;
+    expect(form.byocBuiltins).toEqual(["browser"]);
+    const spec = republishSpec(buildAgentSpec(form, CATALOGS), STORED_BYOC);
+    const byKey = Object.fromEntries((spec.tools ?? []).map((tool) => [`${tool.type}:${tool.name}`, tool]));
+    expect(Object.keys(byKey).sort()).toEqual(["builtin:browser", "rest:crm"]);
+    expect(byKey["builtin:browser"]).toEqual({ type: "builtin", name: "browser" });
+    expect(byKey["rest:crm"].auth).toMatchObject({ connection: "team-idp", kind: "oauth2" });
+  });
+
+  it("adds a builtin the member checked on edit", () => {
+    const stored = { ...STORED_BYOC, tools: [CRM] };
+    const form = formFromStoredSpec("byoc", "byoc-agent", stored).form;
+    expect(form.byocBuiltins).toEqual([]);
+    const spec = republishSpec(buildAgentSpec({ ...form, byocBuiltins: ["code-interpreter", "browser"] }, CATALOGS), stored);
+    expect(keys(spec.tools)).toEqual(["builtin:browser", "builtin:code-interpreter", "rest:crm"]);
+  });
+
+  it("drops a builtin the member unchecked (the form is the only source of truth)", () => {
+    const form = formFromStoredSpec("byoc", "byoc-agent", STORED_BYOC).form;
+    const spec = republishSpec(buildAgentSpec({ ...form, byocBuiltins: [] }, CATALOGS), STORED_BYOC);
+    expect(keys(spec.tools)).toEqual(["rest:crm"]);
+  });
+});
+
+describe("byoc builtin tool permissions", () => {
+  const byocForm = () => ({ ...emptyAgentForm("byoc"), name: "byoc-agent", byocUploadId: "u1" });
+
+  it("emits a bare builtin ToolRef per checked box (no config, no auth), in catalog order", () => {
+    const spec = buildAgentSpec({ ...byocForm(), byocBuiltins: ["code-interpreter", "browser"] }, CATALOGS);
+    expect(spec.tools).toEqual([
+      { type: "builtin", name: "browser" },
+      { type: "builtin", name: "code-interpreter" },
+    ]);
+  });
+
+  it("puts the builtins ahead of the Identity rows", () => {
+    const form = formFromStoredSpec("byoc", "byoc-agent", {
+      method: "byoc",
+      byoc: { artifact_kind: "code_zip", upload_id: "u1" },
+      tools: [CRM],
+    }).form;
+    const spec = buildAgentSpec({ ...form, byocBuiltins: ["browser"] }, CATALOGS);
+    expect((spec.tools ?? []).map((tool) => `${tool.type}:${tool.name}`)).toEqual(["builtin:browser", "rest:crm"]);
+  });
+
+  it("sends no tools at all when nothing is checked", () => {
+    expect(buildAgentSpec(byocForm(), CATALOGS).tools).toBeUndefined();
+  });
+
+  it("does not leak into another method's spec after a method switch", () => {
+    const checked = { ...byocForm(), byocBuiltins: ["browser", "code-interpreter"] as const };
+    for (const method of ["harness", "zip_runtime", "container"] as const) {
+      const spec = buildAgentSpec({ ...checked, byocBuiltins: [...checked.byocBuiltins], method }, CATALOGS);
+      expect((spec.tools ?? []).filter((tool) => tool.type === "builtin")).toEqual([]);
+    }
+  });
+
+  it("refills the boxes from a stored byoc spec, ignoring unknown builtin names", () => {
+    const stored = {
+      method: "byoc",
+      byoc: { artifact_kind: "code_zip", upload_id: "u1" },
+      tools: [
+        { type: "builtin", name: "code-interpreter" },
+        { type: "builtin", name: "browser" },
+        { type: "builtin", name: "web-search" },
+      ],
+    };
+    expect(formFromStoredSpec("byoc", "byoc-agent", stored).form.byocBuiltins).toEqual(["browser", "code-interpreter"]);
+    expect(formFromStoredSpec("zip_runtime", "z", { ...stored, method: "zip_runtime" }).form.byocBuiltins).toEqual([]);
+  });
+});

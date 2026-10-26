@@ -750,6 +750,9 @@ def policy_document(
         })
 
     # ---- builtin tools ----
+    # The full session-level action sets (use the tool, not manage its resources:
+    # no Create*/Delete*), so code driving the tool itself — e.g. a byoc agent's
+    # CDP automation stream, live view, screenshots — is not denied midway.
     builtins = _builtin_names(spec)
     # SB-3: the sandboxed tools and Code Interpreter custom tools open sessions too
     if BUILTIN_CODE_INTERPRETER in builtins or uses_code_interpreter(spec):
@@ -761,6 +764,9 @@ def policy_document(
                 "bedrock-agentcore:StartCodeInterpreterSession",
                 "bedrock-agentcore:StopCodeInterpreterSession",
                 "bedrock-agentcore:GetCodeInterpreterSession",
+                "bedrock-agentcore:ListCodeInterpreterSessions",
+                "bedrock-agentcore:GetCodeInterpreter",
+                "bedrock-agentcore:ListCodeInterpreters",
             ],
             "Resource": "*",
         })
@@ -769,11 +775,15 @@ def policy_document(
             "Sid": "AgentCoreBrowser",
             "Effect": "Allow",
             "Action": [
-                "bedrock-agentcore:ConnectBrowserAutomationStream",
-                "bedrock-agentcore:ConnectBrowserLiveViewStream",
                 "bedrock-agentcore:StartBrowserSession",
                 "bedrock-agentcore:StopBrowserSession",
                 "bedrock-agentcore:GetBrowserSession",
+                "bedrock-agentcore:ListBrowserSessions",
+                "bedrock-agentcore:UpdateBrowserStream",
+                "bedrock-agentcore:ConnectBrowserAutomationStream",
+                "bedrock-agentcore:ConnectBrowserLiveViewStream",
+                "bedrock-agentcore:GetBrowser",
+                "bedrock-agentcore:ListBrowsers",
             ],
             "Resource": "*",
         })

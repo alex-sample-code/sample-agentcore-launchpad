@@ -52,6 +52,7 @@ import {
   BasicCard,
   ByocArtifactCard,
   ByocBasicCard,
+  ByocBuiltinsCard,
   ByocEnvCard,
   ByocModelsCard,
   ContainerToolsCard,
@@ -847,6 +848,7 @@ export function AgentWizard({ edit }: { edit?: AgentInfo } = {}) {
           <FilesystemCard form={form} set={set} touched={touched} network={false} />
           <ByocModelsCard form={form} set={set} err={err} applySource={applySource} />
           <ByocEnvCard form={form} set={set} />
+          <ByocBuiltinsCard form={form} set={set} />
           <IdentityCard
             form={form}
             set={set}
